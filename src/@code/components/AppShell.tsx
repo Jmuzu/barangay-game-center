@@ -3,9 +3,10 @@ import { ProfileSidePanel } from "./ProfileSidePanel";
 
 interface AppShellProps {
   children: ReactNode;
+  returnUrl: string;
 }
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, returnUrl }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--ink)] platform-scale">
       <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-white/95 backdrop-blur platform-slide">
@@ -26,9 +27,14 @@ export function AppShell({ children }: AppShellProps) {
               <span className="text-lg" aria-hidden="true">◌</span>
               <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[var(--gold)]" />
             </button>
-            <button type="button" className="hidden items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--background)] sm:flex">
-              Player account <span className="text-[var(--muted)]" aria-hidden="true">⌄</span>
-            </button>
+            <a
+              href={returnUrl}
+              aria-label="Back to Barangay Platform"
+              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--background)]"
+            >
+              <span aria-hidden="true">←</span>
+              <span>Back to Barangay Platform</span>
+            </a>
           </div>
         </div>
       </header>

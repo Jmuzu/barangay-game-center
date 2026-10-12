@@ -1,4 +1,5 @@
 import { GameLaunchType, GameStatus, TransactionType } from "@shared/enums";
+import { isSameCalendarDay } from "@shared/utils";
 import { createSelector } from "@reduxjs/toolkit";
 import type { Game } from "@shared/types";
 import type { RootState } from "./store";
@@ -7,8 +8,12 @@ export const selectPlayerProfile = (state: RootState) => state.profile;
 export const selectWallet = (state: RootState) => state.wallet;
 export const selectWalletBalance = (state: RootState) => state.wallet.balance;
 export const selectWalletTransactions = (state: RootState) => state.wallet.transactions;
-export const selectDailyShareRemaining = (state: RootState) =>
-  state.wallet.dailyShareLimit - state.wallet.sharedToday;
+export const selectDailyShareRemaining = (state: RootState) => {
+  const sharedToday = state.wallet.lastShareDate && isSameCalendarDay(state.wallet.lastShareDate, new Date().toISOString())
+    ? state.wallet.sharedToday
+    : 0;
+  return Math.max(0, state.wallet.dailyShareLimit - sharedToday);
+};
 
 function registrationToGame(registration: RootState["gameRegistrations"]["items"][number]): Game {
   return {

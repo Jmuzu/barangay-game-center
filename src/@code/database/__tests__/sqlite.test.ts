@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import {
   applySandboxCoinConversionMigration,
+  claimParentPlayerMission,
   createGameRegistration,
   consumeParentLaunch,
   listGameRegistrations,
@@ -10,8 +11,10 @@ import {
   resetState,
   saveParentPlayerState,
   saveState,
+  transferParentPlayerCoins,
+  updateMissionConfiguration,
 } from "@code/database/sqlite";
-import { GameCategory, GameLaunchType, GameStatus } from "@shared/enums";
+import { GameCategory, GameLaunchType, GameStatus, TransactionType } from "@shared/enums";
 
 const registrationInput = {
   appName: "SQLite Test App",
@@ -149,12 +152,84 @@ describe("SQLite state repository", () => {
     expect(consumeParentLaunch(secondUser, "launch-second", "parent-session-2", Date.now() + 60_000)).toBe(true);
 
     const firstState = readParentPlayerState(firstUser.id)!;
-    const secondState = readParentPlayerState(secondUser.id)!;
     expect(firstState.profile).toMatchObject({ id: firstUser.id, displayName: firstUser.displayName, role: "player" });
     expect(firstState.wallet.balance).toBe(0);
     saveParentPlayerState(firstUser.id, { ...firstState, wallet: { ...firstState.wallet, balance: 7 } });
     expect(readParentPlayerState(firstUser.id)?.wallet.balance).toBe(7);
     expect(readParentPlayerState(secondUser.id)?.wallet.balance).toBe(0);
     expect(readState().profile.id).not.toBe(firstUser.id);
+
+    const adminUser = { ...firstUser, id: "parent-admin-1", role: "admin" as const };
+    consumeParentLaunch(adminUser, "launch-admin", "parent-session-admin", Date.now() + 60_000);
+    expect(readParentPlayerState(adminUser.id)?.profile.role).toBe("super-admin");
+  });
+
+  it("transfers coins between parent players atomically and makes retries idempotent", () => {
+    const sender = {
+      id: "transfer-sender",
+      displayName: "Sender",
+      homeBarangay: "Barangay One",
+      barangayId: "brgy-001",
+      role: "resident" as const,
+      isActive: true,
+    };
+    const recipient = { ...sender, id: "transfer-recipient", displayName: "Recipient" };
+    consumeParentLaunch(sender, "transfer-launch-sender", "transfer-session-sender", Date.now() + 60_000);
+    consumeParentLaunch(recipient, "transfer-launch-recipient", "transfer-session-recipient", Date.now() + 60_000);
+
+    const senderState = readParentPlayerState(sender.id)!;
+    const recipientState = readParentPlayerState(recipient.id)!;
+    saveParentPlayerState(sender.id, { ...senderState, wallet: { ...senderState.wallet, balance: 60, dailyShareLimit: 50 } });
+    saveParentPlayerState(recipient.id, { ...recipientState, wallet: { ...recipientState.wallet, balance: 5 } });
+    const input = {
+      requestId: "transfer-request-001",
+      senderId: sender.id,
+      recipientId: recipient.id,
+      amount: 25,
+      createdAt: "2026-10-09T12:00:00.000Z",
+    };
+
+    expect(transferParentPlayerCoins(input).status).toBe("transferred");
+    expect(transferParentPlayerCoins(input).status).toBe("duplicate");
+    expect(readParentPlayerState(sender.id)?.wallet).toMatchObject({ balance: 35, sharedToday: 25 });
+    expect(readParentPlayerState(recipient.id)?.wallet).toMatchObject({ balance: 30 });
+    expect(readParentPlayerState(sender.id)?.wallet.transactions).toHaveLength(1);
+    expect(readParentPlayerState(recipient.id)?.wallet.transactions).toHaveLength(1);
+  });
+
+  it("shares mission configuration and claims eligible rewards only once", () => {
+    const player = {
+      id: "mission-player",
+      displayName: "Mission Player",
+      homeBarangay: "Barangay One",
+      barangayId: "brgy-001",
+      role: "resident" as const,
+      isActive: true,
+    };
+    consumeParentLaunch(player, "mission-player-launch", "mission-player-session", Date.now() + 60_000);
+    const playerState = readParentPlayerState(player.id)!;
+    saveParentPlayerState(player.id, {
+      ...playerState,
+      wallet: {
+        ...playerState.wallet,
+        transactions: [{ id: "spend-1000", type: TransactionType.GameSpend, amount: 1000, reason: "Play", createdAt: "2026-10-01T10:00:00.000Z" }],
+      },
+    });
+
+    expect(updateMissionConfiguration({ missionId: "mission-spend-1000", bonusCoins: 75 })).toMatchObject({
+      status: "updated",
+      mission: { bonusCoins: 75 },
+    });
+    expect(readState().missions.find((mission) => mission.id === "mission-spend-1000")?.bonusCoins).toBe(75);
+    expect(claimParentPlayerMission(player.id, "mission-spend-1000")).toMatchObject({
+      status: "claimed",
+      wallet: { balance: 75 },
+      claimedMissionIds: ["mission-spend-1000"],
+    });
+    expect(claimParentPlayerMission(player.id, "mission-spend-1000")).toMatchObject({
+      status: "duplicate",
+      wallet: { balance: 75 },
+    });
+    expect(readParentPlayerState(player.id)?.wallet.transactions.filter((transaction) => transaction.reason === "Mission completed: Big Spender I")).toHaveLength(1);
   });
 });

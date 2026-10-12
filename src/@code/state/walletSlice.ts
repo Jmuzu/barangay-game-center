@@ -87,12 +87,15 @@ const walletSlice = createSlice({
         counterpartyName: recipientName,
       });
     },
+    walletReplaced(_state, action: PayloadAction<WalletState>) {
+      return action.payload;
+    },
     walletReset() {
       return initialState;
     },
   },
 });
 
-export const { coinsCredited, coinsDebited, coinsShared, walletReset } = walletSlice.actions;
+export const { coinsCredited, coinsDebited, coinsShared, walletReplaced, walletReset } = walletSlice.actions;
 export const walletReducer = walletSlice.reducer;
 export const walletInitialState = initialState;

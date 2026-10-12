@@ -70,8 +70,7 @@ function tokenCodec() {
 }
 
 function mapGameCenterRole(role: ParentGameIdentity["role"]): AuthorRole {
-  if (role === "super_admin") return AuthorRole.SuperAdmin;
-  if (role === "admin") return AuthorRole.BrgyAdmin;
+  if (role === "admin" || role === "super_admin") return AuthorRole.SuperAdmin;
   return AuthorRole.Player;
 }
 

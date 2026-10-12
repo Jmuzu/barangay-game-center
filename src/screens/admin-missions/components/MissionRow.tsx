@@ -12,9 +12,10 @@ interface MissionRowProps {
   mission: Mission;
   onUpdateBonus: (bonusCoins: number) => void;
   onToggleStatus: () => void;
+  pending?: boolean;
 }
 
-export function MissionRow({ mission, onUpdateBonus, onToggleStatus }: MissionRowProps) {
+export function MissionRow({ mission, onUpdateBonus, onToggleStatus, pending = false }: MissionRowProps) {
   const [isEditingBonus, setIsEditingBonus] = useState(false);
 
   return (
@@ -33,11 +34,12 @@ export function MissionRow({ mission, onUpdateBonus, onToggleStatus }: MissionRo
         </div>
 
         <div className="grid grid-cols-2 gap-2 lg:col-span-4">
-          <Button className="w-full" variant="secondary" onClick={() => setIsEditingBonus((prev) => !prev)}>
+          <Button className="w-full" variant="secondary" disabled={pending} onClick={() => setIsEditingBonus((prev) => !prev)}>
             {isEditingBonus ? "Cancel" : "Edit bonus"}
           </Button>
           <Button
             className="w-full"
+            disabled={pending}
             variant={mission.status === MissionStatus.Active ? "danger" : "primary"}
             onClick={onToggleStatus}
           >

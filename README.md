@@ -36,7 +36,7 @@ launch link to resolve.
 
 Game Center is a child app: direct page access and first-party APIs require a valid Barangay Platform session. Configure the same random secret of at least 32 bytes as `GAME_CENTER_SSO_SECRET` in ignored `.env.local` files in both apps. Also set `GAME_CENTER_URL=http://localhost:3100` in Barangay Platform and `BARANGAY_PLATFORM_URL=http://localhost:3000` here. Example variable names are in `.env.example` in each app.
 
-The parent server issues a single-use 60-second signed launch token and posts it to Game Center; the token is not placed in the URL. Game Center revalidates the parent session, sets its HttpOnly child cookie, and provisions a zero-balance player keyed by the parent user ID. Resident/admin map to player; parent SuperAdmin maps to Game Center SuperAdmin. The child session is revalidated against the parent on each request. If a child session is missing or stale, sign in again through Barangay Platform's Game Center sidebar link.
+The parent server issues a single-use 60-second signed launch token and posts it to Game Center; the token is not placed in the URL. Game Center revalidates the parent session, sets its HttpOnly child cookie, and provisions a zero-balance player keyed by the parent user ID. Residents map to Game Center Player; parent Admin and SuperAdmin both map to Game Center SuperAdmin and receive the same access. The child session is revalidated against the parent on each request. The header's "Back to Barangay Platform" link returns residents to `/dashboard`, admins to `/admin`, and superadmins to `/superadmin`, using `BARANGAY_PLATFORM_URL`. If a child session is missing or stale, sign in again through Barangay Platform's Game Center sidebar link.
 
 ## Data and Persistence
 

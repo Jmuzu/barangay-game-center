@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { consumeParentLaunch, readParentPlayerState, resetState } from "@code/database/sqlite";
+import { consumeParentLaunch, readParentPlayerState, resetState, saveParentPlayerState } from "@code/database/sqlite";
 import { getGameCenterSession } from "@code/auth/parentSession";
 import { AuthorRole } from "@shared/enums";
 import { GET, PUT } from "./route";
@@ -69,5 +69,30 @@ describe("parent-scoped Game Center state API", () => {
       displayName: parentUser.displayName,
       role: "player",
     });
+  });
+
+  it("returns the current SuperAdmin role for parent admin sessions on existing profiles", async () => {
+    const adminUser = { ...parentUser, id: "existing-parent-admin", role: "admin" as const };
+    consumeParentLaunch(adminUser, "existing-admin-launch", "admin-session", Math.floor(Date.now() / 1000) + 60);
+    const existingState = readParentPlayerState(adminUser.id)!;
+    saveParentPlayerState(adminUser.id, {
+      ...existingState,
+      profile: { ...existingState.profile, role: AuthorRole.BrgyAdmin },
+      adminUsers: {
+        ...existingState.adminUsers,
+        users: existingState.adminUsers.users.map((user) => ({ ...user, role: AuthorRole.BrgyAdmin })),
+      },
+    });
+    mockGetGameCenterSession.mockResolvedValueOnce({
+      id: "admin-session",
+      user: adminUser,
+      gameCenterRole: AuthorRole.SuperAdmin,
+    });
+
+    const response = await GET();
+    const state = await response.json();
+
+    expect(state.profile.role).toBe(AuthorRole.SuperAdmin);
+    expect(state.adminUsers.users[0].role).toBe(AuthorRole.SuperAdmin);
   });
 });

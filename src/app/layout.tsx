@@ -27,12 +27,21 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     const parentUrl = process.env.BARANGAY_PLATFORM_URL || "http://localhost:3000";
     redirect(new URL("/login?next=game-center", parentUrl).toString());
   }
+  const parentDashboardPath = session.user.role === "super_admin"
+    ? "/superadmin"
+    : session.user.role === "admin"
+      ? "/admin"
+      : "/dashboard";
+  const parentDashboardUrl = new URL(
+    parentDashboardPath,
+    process.env.BARANGAY_PLATFORM_URL || "http://localhost:3000",
+  ).toString();
 
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <StoreProvider>
-          <AppShell>{children}</AppShell>
+          <AppShell returnUrl={parentDashboardUrl}>{children}</AppShell>
         </StoreProvider>
       </body>
     </html>

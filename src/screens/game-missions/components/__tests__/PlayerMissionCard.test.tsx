@@ -42,6 +42,14 @@ describe("PlayerMissionCard", () => {
     expect(screen.getByRole("button", { name: /claimed/i })).toBeDisabled();
   });
 
+  it("disables the reward button while the claim is pending", () => {
+    render(
+      <PlayerMissionCard mission={mission} progressCurrent={1000} progressTarget={1000} claimed={false} pending onClaim={jest.fn()} />
+    );
+
+    expect(screen.getByRole("button", { name: /claiming/i })).toBeDisabled();
+  });
+
   it("allows manual claiming when there is no automatic progress target", () => {
     const onClaim = jest.fn();
     render(

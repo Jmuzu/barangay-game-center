@@ -19,12 +19,16 @@ const missionsSlice = createSlice({
       if (!mission) return;
       mission.status = mission.status === MissionStatus.Active ? MissionStatus.Inactive : MissionStatus.Active;
     },
+    missionReplaced(state, action: PayloadAction<Mission>) {
+      const index = state.findIndex((mission) => mission.id === action.payload.id);
+      if (index >= 0) state[index] = action.payload;
+    },
     missionsReset() {
       return initialState;
     },
   },
 });
 
-export const { missionBonusUpdated, missionStatusToggled, missionsReset } = missionsSlice.actions;
+export const { missionBonusUpdated, missionStatusToggled, missionReplaced, missionsReset } = missionsSlice.actions;
 export const missionsReducer = missionsSlice.reducer;
 export const missionsInitialState = initialState;

@@ -38,6 +38,7 @@ export const APP_ROUTES: AppRoute[] = [
     label: "Share Coins",
     icon: "🎁",
     description: "Send coins to another player.",
+    restrictedToRoles: [AuthorRole.Player],
   },
   {
     path: "/admin/users",

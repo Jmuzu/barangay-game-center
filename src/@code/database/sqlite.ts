@@ -3,17 +3,18 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { RootState } from "@code/state/store";
-import { AuthorRole, CoinAdjustmentType, TransactionType, UserStatus } from "@shared/enums";
-import type { CoinPackage, GameRegistration, GameRegistrationInput, ProviderTransaction } from "@shared/types";
+import { AuthorRole, CoinAdjustmentType, MissionStatus, TransactionType, UserStatus } from "@shared/enums";
+import type { CoinPackage, GameRegistration, GameRegistrationInput, Mission, ProviderTransaction, WalletState } from "@shared/types";
 import { encryptProviderSecret, decryptProviderSecret } from "./providerSecurity";
 import type { ParentGameIdentity } from "@code/auth/parentSession";
+import { isSameCalendarDay } from "@shared/utils";
+import { getMissionProgressTarget, getMissionProgressValue } from "@shared/helpers";
 
 type PersistedKey = keyof RootState;
 type PersistedState = RootState;
 
 function parentRoleToGameCenterRole(role: ParentGameIdentity["role"]): AuthorRole {
-  if (role === "super_admin") return AuthorRole.SuperAdmin;
-  if (role === "admin") return AuthorRole.BrgyAdmin;
+  if (role === "admin" || role === "super_admin") return AuthorRole.SuperAdmin;
   return AuthorRole.Player;
 }
 
@@ -98,6 +99,194 @@ export function resetParentPlayerState(user: ParentGameIdentity): PersistedState
   const state = createParentPlayerState(user);
   saveParentPlayerState(user.id, state);
   return state;
+}
+
+export type CoinTransferResult = {
+  status: "transferred" | "duplicate" | "idempotency-conflict" | "invalid-amount" | "self-transfer"
+    | "sender-not-found" | "recipient-not-found" | "recipient-inactive" | "recipient-out-of-scope" | "insufficient-balance" | "daily-limit-exceeded";
+  senderWallet?: WalletState;
+}
+
+export function transferParentPlayerCoins(input: {
+  requestId: string;
+  senderId: string;
+  recipientId: string;
+  amount: number;
+  note?: string;
+  createdAt: string;
+}): CoinTransferResult {
+  const db = getDatabase();
+  return db.transaction((): CoinTransferResult => {
+    const existing = db.prepare("SELECT sender_id, recipient_id, amount FROM coin_transfers WHERE request_id = ?")
+      .get(input.requestId) as { sender_id: string; recipient_id: string; amount: number } | undefined;
+    if (existing) {
+      if (existing.sender_id !== input.senderId || existing.recipient_id !== input.recipientId || existing.amount !== input.amount) {
+        return { status: "idempotency-conflict" };
+      }
+      const sender = readParentPlayerState(input.senderId);
+      return sender ? { status: "duplicate", senderWallet: sender.wallet } : { status: "sender-not-found" };
+    }
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return { status: "invalid-amount" };
+    if (input.senderId === input.recipientId) return { status: "self-transfer" };
+
+    const sender = readParentPlayerState(input.senderId);
+    if (!sender) return { status: "sender-not-found" };
+    const recipient = readParentPlayerState(input.recipientId);
+    if (!recipient) return { status: "recipient-not-found" };
+    if (recipient.profile.homeBarangay !== sender.profile.homeBarangay) return { status: "recipient-out-of-scope" };
+    const recipientAccount = recipient.adminUsers.users.find((user) => user.id === input.recipientId);
+    if (!recipientAccount || recipientAccount.status !== UserStatus.Active) return { status: "recipient-inactive" };
+
+    const sharedToday = sender.wallet.lastShareDate && isSameCalendarDay(sender.wallet.lastShareDate, input.createdAt)
+      ? sender.wallet.sharedToday
+      : 0;
+    if (input.amount > sender.wallet.balance) return { status: "insufficient-balance" };
+    if (input.amount > sender.wallet.dailyShareLimit - sharedToday) return { status: "daily-limit-exceeded" };
+
+    const senderName = sender.profile.displayName;
+    const recipientName = recipient.profile.displayName;
+    const note = input.note?.trim();
+    const transferId = `share-${input.requestId}`;
+    const senderWallet: WalletState = {
+      ...sender.wallet,
+      balance: sender.wallet.balance - input.amount,
+      sharedToday: sharedToday + input.amount,
+      lastShareDate: input.createdAt,
+      transactions: [{
+        id: transferId,
+        type: TransactionType.ShareSent,
+        amount: input.amount,
+        reason: note || `Shared with ${recipientName}`,
+        createdAt: input.createdAt,
+        counterpartyName: recipientName,
+      }, ...sender.wallet.transactions],
+    };
+    const recipientWallet: WalletState = {
+      ...recipient.wallet,
+      balance: recipient.wallet.balance + input.amount,
+      transactions: [{
+        id: transferId,
+        type: TransactionType.ShareReceived,
+        amount: input.amount,
+        reason: note || `Received from ${senderName}`,
+        createdAt: input.createdAt,
+        counterpartyName: senderName,
+      }, ...recipient.wallet.transactions],
+    };
+    const updateState = db.prepare(`
+      UPDATE game_center_user_states SET state_json = ?, updated_at = CURRENT_TIMESTAMP WHERE parent_user_id = ?
+    `);
+    updateState.run(JSON.stringify({
+      ...sender,
+      wallet: senderWallet,
+      adminUsers: {
+        ...sender.adminUsers,
+        users: sender.adminUsers.users.map((user) => user.id === input.senderId
+          ? { ...user, coinBalance: senderWallet.balance }
+          : user),
+      },
+    }), input.senderId);
+    updateState.run(JSON.stringify({
+      ...recipient,
+      wallet: recipientWallet,
+      adminUsers: {
+        ...recipient.adminUsers,
+        users: recipient.adminUsers.users.map((user) => user.id === input.recipientId
+          ? { ...user, coinBalance: recipientWallet.balance }
+          : user),
+      },
+    }), input.recipientId);
+    db.prepare("INSERT INTO coin_transfers (request_id, sender_id, recipient_id, amount, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(input.requestId, input.senderId, input.recipientId, input.amount, input.createdAt);
+    return { status: "transferred", senderWallet };
+  })();
+}
+
+export type MissionUpdateResult = { status: "updated"; mission: Mission } | { status: "not-found" } | { status: "invalid-bonus" };
+
+export function updateMissionConfiguration(input: {
+  missionId: string;
+  bonusCoins?: number;
+  status?: MissionStatus;
+}): MissionUpdateResult {
+  const db = getDatabase();
+  return db.transaction((): MissionUpdateResult => {
+    const row = db.prepare("SELECT value FROM app_state WHERE key = 'missions'").get() as { value: string } | undefined;
+    const missions = row ? JSON.parse(row.value) as Mission[] : [];
+    const mission = missions.find((candidate) => candidate.id === input.missionId);
+    if (!mission) return { status: "not-found" };
+    if (input.bonusCoins !== undefined) {
+      if (!Number.isSafeInteger(input.bonusCoins) || input.bonusCoins <= 0) return { status: "invalid-bonus" };
+      mission.bonusCoins = input.bonusCoins;
+    }
+    if (input.status !== undefined) mission.status = input.status;
+    db.prepare("UPDATE app_state SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'missions'")
+      .run(JSON.stringify(missions));
+    return { status: "updated", mission };
+  })();
+}
+
+export type MissionClaimResult = {
+  status: "claimed" | "duplicate" | "not-found" | "inactive" | "incomplete" | "player-not-found";
+  wallet?: WalletState;
+  claimedMissionIds?: string[];
+}
+
+export function claimParentPlayerMission(parentUserId: string, missionId: string): MissionClaimResult {
+  const db = getDatabase();
+  return db.transaction((): MissionClaimResult => {
+    const stateRow = db.prepare("SELECT state_json FROM game_center_user_states WHERE parent_user_id = ?")
+      .get(parentUserId) as { state_json: string } | undefined;
+    if (!stateRow) return { status: "player-not-found" };
+    const state = JSON.parse(stateRow.state_json) as PersistedState;
+    const catalogRow = db.prepare("SELECT value FROM app_state WHERE key = 'missions'").get() as { value: string } | undefined;
+    const missions = catalogRow ? JSON.parse(catalogRow.value) as Mission[] : [];
+    const mission = missions.find((candidate) => candidate.id === missionId);
+    if (!mission) return { status: "not-found" };
+
+    const claimedMissionIds = state.playerMissions.claimedMissionIds;
+    if (claimedMissionIds.includes(missionId)) return { status: "duplicate", wallet: state.wallet, claimedMissionIds };
+    if (mission.status !== MissionStatus.Active) return { status: "inactive" };
+
+    const progressTarget = getMissionProgressTarget(mission.id);
+    const lifetimeCoinsSpent = state.wallet.transactions
+      .filter((transaction) => transaction.type === TransactionType.GameSpend)
+      .reduce((total, transaction) => total + transaction.amount, 0);
+    const progress = getMissionProgressValue(mission.id, {
+      streakDays: state.streak.currentStreak,
+      lifetimeCoinsSpent,
+    });
+    if (progressTarget !== null && progress < progressTarget) return { status: "incomplete" };
+
+    const createdAt = new Date().toISOString();
+    const transactionId = `mission-${randomUUID()}`;
+    const wallet: WalletState = {
+      ...state.wallet,
+      balance: state.wallet.balance + mission.bonusCoins,
+      transactions: [{
+        id: transactionId,
+        type: TransactionType.AdministrativeCredit,
+        amount: mission.bonusCoins,
+        reason: `Mission completed: ${mission.title}`,
+        createdAt,
+      }, ...state.wallet.transactions],
+    };
+    const nextClaimedMissionIds = [...claimedMissionIds, missionId];
+    const adminUsers = {
+      ...state.adminUsers,
+      users: state.adminUsers.users.map((user) => user.id === parentUserId
+        ? { ...user, coinBalance: wallet.balance }
+        : user),
+    };
+    db.prepare("UPDATE game_center_user_states SET state_json = ?, updated_at = CURRENT_TIMESTAMP WHERE parent_user_id = ?")
+      .run(JSON.stringify({
+        ...state,
+        wallet,
+        adminUsers,
+        playerMissions: { ...state.playerMissions, claimedMissionIds: nextClaimedMissionIds },
+      }), parentUserId);
+    return { status: "claimed", wallet, claimedMissionIds: nextClaimedMissionIds };
+  })();
 }
 
 export interface CoinPurchase {
@@ -397,6 +586,15 @@ function getDatabase(): Database.Database {
       parent_user_id TEXT PRIMARY KEY NOT NULL,
       state_json TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS coin_transfers (
+      request_id TEXT PRIMARY KEY NOT NULL,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
   database.exec(`
@@ -731,6 +929,7 @@ export function resetState(): PersistedState {
   database!.prepare("DELETE FROM coin_purchase_webhook_events").run();
   database!.prepare("DELETE FROM game_center_user_states").run();
   database!.prepare("DELETE FROM consumed_parent_launches").run();
+  database!.prepare("DELETE FROM coin_transfers").run();
   seedDatabase();
   return readState();
 }

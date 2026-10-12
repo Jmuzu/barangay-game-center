@@ -23,8 +23,11 @@ export function StoreProvider({ children }: StoreProviderProps) {
         if (cancelled) return;
         const registrationsResponse = await fetch("/api/game-registrations");
         const registrations = registrationsResponse.ok ? await registrationsResponse.json() : [];
+        const missionsResponse = await fetch("/api/missions", { cache: "no-store" });
+        const missions = missionsResponse.ok ? await missionsResponse.json() : state.missions;
         setStore(makeStore({
           ...state,
+          missions,
           gameRegistrations: { items: registrations, status: "ready", error: null },
         }));
         setIsHydrated(true);

@@ -9,6 +9,7 @@ interface PlayerMissionCardProps {
   progressCurrent: number | null;
   progressTarget: number | null;
   claimed: boolean;
+  pending?: boolean;
   onClaim: () => void;
 }
 
@@ -17,13 +18,14 @@ export function PlayerMissionCard({
   progressCurrent,
   progressTarget,
   claimed,
+  pending = false,
   onClaim,
 }: PlayerMissionCardProps) {
   const isUnavailable = mission.status === MissionStatus.Inactive;
   const isEligible = progressTarget === null ? true : (progressCurrent ?? 0) >= progressTarget;
-  const claimDisabled = claimed || isUnavailable || !isEligible;
+  const claimDisabled = claimed || pending || isUnavailable || !isEligible;
 
-  const buttonLabel = claimed ? "Claimed" : isUnavailable ? "Unavailable" : "Claim reward";
+  const buttonLabel = pending ? "Claiming..." : claimed ? "Claimed" : isUnavailable ? "Unavailable" : "Claim reward";
 
   return (
     <Card className="flex flex-col gap-3">
