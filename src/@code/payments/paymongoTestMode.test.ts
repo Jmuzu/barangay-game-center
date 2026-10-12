@@ -12,7 +12,7 @@ describe("PayMongo test-mode security", () => {
     else process.env.PAYMONGO_SECRET_KEY = originalSecret;
   });
 
-  it("accepts only a test secret outside production", () => {
+  it("accepts only a test secret, including on hosted production builds", () => {
     mutableEnvironment.NODE_ENV = "development";
     process.env.PAYMONGO_SECRET_KEY = "sk_test_demo";
     expect(getPayMongoTestSecret()).toBe("sk_test_demo");
@@ -22,6 +22,9 @@ describe("PayMongo test-mode security", () => {
 
     mutableEnvironment.NODE_ENV = "production";
     process.env.PAYMONGO_SECRET_KEY = "sk_test_demo";
+    expect(getPayMongoTestSecret()).toBe("sk_test_demo");
+
+    process.env.PAYMONGO_SECRET_KEY = "sk_live_not-allowed";
     expect(getPayMongoTestSecret()).toBeNull();
   });
 

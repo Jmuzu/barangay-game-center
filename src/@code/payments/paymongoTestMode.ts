@@ -6,7 +6,8 @@ export type PayMongoTestPaymentMethod = "gcash" | "paymaya" | "grab_pay" | "shop
 
 export function getPayMongoTestSecret(): string | null {
   const secret = process.env.PAYMONGO_SECRET_KEY;
-  if (process.env.NODE_ENV === "production" || !secret?.startsWith("sk_test_")) return null;
+  // Sandbox only: live keys are rejected by the prefix check, so test keys are safe on hosted (production) builds.
+  if (!secret?.startsWith("sk_test_")) return null;
   return secret;
 }
 

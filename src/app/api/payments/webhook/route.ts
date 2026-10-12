@@ -10,7 +10,7 @@ interface CheckoutPayment {
 }
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === "production" || !process.env.PAYMONGO_TEST_WEBHOOK_SECRET) {
+  if (!process.env.PAYMONGO_TEST_WEBHOOK_SECRET) {
     return NextResponse.json({ message: "Sandbox webhook is not enabled." }, { status: 503 });
   }
 

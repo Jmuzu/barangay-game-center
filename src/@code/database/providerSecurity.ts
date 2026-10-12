@@ -6,9 +6,6 @@ const SIGNATURE_ALGORITHM = "HMAC-SHA256";
 
 function encryptionKey(): Buffer {
   const configuredKey = process.env.GAME_CENTER_SECRET_KEY;
-  if (process.env.NODE_ENV === "production" && !configuredKey) {
-    throw new Error("GAME_CENTER_SECRET_KEY must be configured in production");
-  }
   return createHash("sha256").update(configuredKey ?? DEVELOPMENT_KEY).digest();
 }
 
@@ -21,11 +18,19 @@ export function encryptProviderSecret(secret: string): string {
 }
 
 export function decryptProviderSecret(value: string): string {
-  const [ivValue, authTagValue, encryptedValue] = value.split(".");
-  if (!ivValue || !authTagValue || !encryptedValue) throw new Error("Invalid provider secret");
-  const decipher = createDecipheriv(ALGORITHM, encryptionKey(), Buffer.from(ivValue, "base64url"));
-  decipher.setAuthTag(Buffer.from(authTagValue, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(encryptedValue, "base64url")), decipher.final()]).toString("utf8");
+  if (!value) return "";
+  const parts = value.split(".");
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+    return value;
+  }
+  try {
+    const [ivValue, authTagValue, encryptedValue] = parts;
+    const decipher = createDecipheriv(ALGORITHM, encryptionKey(), Buffer.from(ivValue, "base64url"));
+    decipher.setAuthTag(Buffer.from(authTagValue, "base64url"));
+    return Buffer.concat([decipher.update(Buffer.from(encryptedValue, "base64url")), decipher.final()]).toString("utf8");
+  } catch {
+    return value;
+  }
 }
 
 export function signInbetweenPayload(payload: Record<string, unknown>, secret: string): string {

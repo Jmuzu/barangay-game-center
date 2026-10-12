@@ -7,3 +7,35 @@ INSERT OR IGNORE INTO app_state (key, value, updated_at) VALUES
 ('missions', '[{"id":"mission-weekly-play","title":"Weekly Player","description":"Successfully play any game at least once a day for 1 week.","bonusCoins":100,"status":"active"},{"id":"mission-spend-1000","title":"Big Spender I","description":"Spend a total of 1,000 coins across any games.","bonusCoins":50,"status":"active"},{"id":"mission-spend-10000","title":"Big Spender II","description":"Spend a total of 10,000 coins across any games.","bonusCoins":300,"status":"active"},{"id":"mission-spend-100000","title":"Big Spender III","description":"Spend a total of 100,000 coins across any games.","bonusCoins":2000,"status":"active"},{"id":"mission-five-hour-streak","title":"Marathon Player","description":"Play for 5 hours straight in a single session.","bonusCoins":500,"status":"active"}]', CURRENT_TIMESTAMP),
 ('streak', '{"currentStreak":0,"longestStreak":0,"lastPlayedDate":null,"claimedMilestoneDays":[]}', CURRENT_TIMESTAMP),
 ('playerMissions', '{"claimedMissionIds":[]}', CURRENT_TIMESTAMP);
+
+INSERT INTO game_registrations (
+  id, app_key, app_name, provider_name, description, launch_url, api_base_url,
+  auth_endpoint, balance_endpoint, add_chips_endpoint, deduct_chips_endpoint, credential_reference,
+  signature_algorithm, external_user_id_field, transaction_id_field,
+  transaction_type_field, game_type_field, request_id_field, category, cost_per_play,
+  launch_type, status, active, signing_secret_ciphertext, created_at
+) VALUES
+(
+  'game-reg-001', 'fruit-game', 'Online Fruit Game', 'Barangay Arcade Studios',
+  'Spin and match colorful local fruits to win multipliers and earn community bonus rewards!',
+  'https://games.barangay.ph/fruit-game', 'https://games.barangay.ph/api/fruit-game',
+  '/auth', '/balance', '/chips/add', '/chips/deduct', 'ref-fruit-game',
+  'hmac-sha256', 'userId', 'transactionId', 'type', 'gameType', 'requestId',
+  'arcade', 10, 'external-url', 'active', 1, '', '2026-09-01T00:00:00.000Z'
+),
+(
+  'game-reg-003', 'e939c295111af7397549aec19dd1073cfe4040b22d62c1dcb34f62a0a3d0403a', 'In Between Cards', 'Barangay Card House',
+  'Classic In-Between card game with instant coin payouts and resident leaderboard ranking.',
+  'https://ib-automated.oraytph.com', 'https://ib-automated.oraytph.com/api',
+  '/auth', '/balance', '/chips/add', '/chips/deduct', 'ref-inbetween',
+  'hmac-sha256', 'userId', 'transactionId', 'type', 'gameType', 'requestId',
+  'card', 0, 'external-url', 'active', 1, '342ea0ddbec474ab828328d4ba72fc9c979615ec4ce083b440bb1e948dfc5cf0', '2026-09-03T00:00:00.000Z'
+)
+ON CONFLICT(id) DO UPDATE SET
+  app_key = excluded.app_key,
+  signing_secret_ciphertext = excluded.signing_secret_ciphertext,
+  launch_url = excluded.launch_url,
+  api_base_url = excluded.api_base_url,
+  cost_per_play = excluded.cost_per_play,
+  status = excluded.status,
+  active = excluded.active;

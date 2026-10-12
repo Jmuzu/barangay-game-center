@@ -18,11 +18,16 @@ export async function GET(_request: Request, context: { params: Promise<{ appKey
 
     const platformUser = session.user;
 
+    const isInbetween =
+      registrationRecord.registration.launchUrl.includes("ib-automated.oraytph.com") ||
+      registrationRecord.registration.appKey === "inbetween" ||
+      registrationRecord.registration.id === "game-reg-003";
+
     const payload = {
       username: platformUser.id,
       userToken: randomUUID(),
       platformName: "barangay-game-center",
-      gameType: registrationRecord.registration.appKey,
+      gameType: isInbetween ? "classic" : registrationRecord.registration.appKey,
     };
     const launchPayload = {
       ...payload,
@@ -31,11 +36,19 @@ export async function GET(_request: Request, context: { params: Promise<{ appKey
       homeBarangay: platformUser.homeBarangay,
     };
     const sign = signInbetweenPayload(payload, registrationRecord.signingSecret);
-    const launchUrl = new URL(registrationRecord.registration.launchUrl);
-    Object.entries({ ...launchPayload, sign }).forEach(([key, value]) => launchUrl.searchParams.set(key, value));
+
+    let launchUrlString: string;
+    if (registrationRecord.registration.launchUrl.includes("ib-automated.oraytph.com")) {
+      const base = registrationRecord.registration.launchUrl.replace(/\/+$/, "");
+      launchUrlString = `${base}/third-party-auth/${encodeURIComponent(payload.platformName)}/${encodeURIComponent(payload.username)}/${encodeURIComponent(payload.userToken)}/${encodeURIComponent(sign)}/${encodeURIComponent(payload.gameType)}`;
+    } else {
+      const launchUrl = new URL(registrationRecord.registration.launchUrl);
+      Object.entries({ ...launchPayload, sign }).forEach(([key, value]) => launchUrl.searchParams.set(key, value));
+      launchUrlString = launchUrl.toString();
+    }
 
     return NextResponse.json({
-      launchUrl: launchUrl.toString(),
+      launchUrl: launchUrlString,
       appKey: registrationRecord.registration.appKey,
       payload: launchPayload,
       sign,
