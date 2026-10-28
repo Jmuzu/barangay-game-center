@@ -28,12 +28,15 @@ const streakSlice = createSlice({
         state.claimedMilestoneDays.push(action.payload.days);
       }
     },
+    streakReplaced(_state, action: PayloadAction<StreakState>) {
+      return action.payload;
+    },
     streakReset() {
       return initialState;
     },
   },
 });
 
-export const { gamePlayed, milestoneClaimed, streakReset } = streakSlice.actions;
+export const { gamePlayed, milestoneClaimed, streakReplaced, streakReset } = streakSlice.actions;
 export const streakReducer = streakSlice.reducer;
 export const streakInitialState = initialState;

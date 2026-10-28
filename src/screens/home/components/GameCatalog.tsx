@@ -2,7 +2,7 @@
 
 import { GameLaunchType, GameStatus } from "@shared/enums";
 import type { Game } from "@shared/types";
-import { coinsDebited, useAppDispatch, useAppSelector, useRecordGamePlay } from "@code/state";
+import { streakReplaced, useAppDispatch, useAppSelector, walletReplaced } from "@code/state";
 import { selectAllGames, selectWalletBalance } from "@code/state";
 import { GameCard } from "./GameCard";
 
@@ -10,24 +10,40 @@ export function GameCatalog() {
   const dispatch = useAppDispatch();
   const games = useAppSelector(selectAllGames);
   const balance = useAppSelector(selectWalletBalance);
-  const recordGamePlay = useRecordGamePlay();
-
   async function handlePlay(game: Game) {
     if (game.status !== GameStatus.Active || balance < game.costPerPlay) {
       return;
     }
 
-    dispatch(
-      coinsDebited({
-        amount: game.costPerPlay,
-        reason: `Played ${game.name}`,
-        relatedGameId: game.id,
-      })
-    );
-    recordGamePlay();
+    const idempotencyKey = crypto.randomUUID();
+    const launchWindow = game.launchType === GameLaunchType.ExternalUrl && game.launchTarget
+      ? window.open("about:blank", "_blank")
+      : null;
+    try {
+      const playResponse = await fetch("/api/games/play", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({ gameKey: game.slug }),
+      });
+      const playResult = await playResponse.json() as {
+        wallet?: Parameters<typeof walletReplaced>[0];
+        streak?: Parameters<typeof streakReplaced>[0];
+        message?: string;
+      };
+      if (!playResponse.ok || !playResult.wallet || !playResult.streak) {
+        throw new Error(playResult.message || "Could not start this game.");
+      }
+      dispatch(walletReplaced(playResult.wallet));
+      dispatch(streakReplaced(playResult.streak));
+    } catch {
+      launchWindow?.close();
+      return;
+    }
 
     if (game.launchType === GameLaunchType.ExternalUrl && game.launchTarget) {
-      const launchWindow = window.open("about:blank", "_blank");
       try {
         const response = await fetch(`/api/game-registrations/${encodeURIComponent(game.slug)}/launch`);
         const body = (await response.json()) as { launchUrl?: string; message?: string };

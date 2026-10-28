@@ -27,14 +27,17 @@ export function AppShell({ children, returnUrl }: AppShellProps) {
               <span className="text-lg" aria-hidden="true">◌</span>
               <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[var(--gold)]" />
             </button>
-            <a
-              href={returnUrl}
-              aria-label="Back to Barangay Platform"
-              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--background)]"
-            >
-              <span aria-hidden="true">←</span>
-              <span>Back to Barangay Platform</span>
-            </a>
+            <form action="/api/auth/logout" method="post">
+              <input type="hidden" name="returnUrl" value={returnUrl} />
+              <button
+                type="submit"
+                aria-label="Back to Barangay Platform"
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--background)]"
+              >
+                <span aria-hidden="true">←</span>
+                <span>Back to Barangay Platform</span>
+              </button>
+            </form>
           </div>
         </div>
       </header>

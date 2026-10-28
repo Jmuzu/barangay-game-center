@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack -p 3100",
+    "dev": "next dev -p 3100",
     "build": "next build --webpack",
     "start": "next start -p 3100",
     "lint": "eslint",
@@ -12,8 +12,6 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.4.0",
-    "@types/better-sqlite3": "^9.6.0",
-    "better-sqlite3": "^13.0.3",
     "next": "16.1.0",
     "postcss": "^8.5.6",
     "react": "19.2.3",

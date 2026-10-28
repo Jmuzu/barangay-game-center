@@ -14,12 +14,43 @@ function resolveBaseUrl(request: Request): string {
 }
 
 export async function POST(request: Request) {
-  const parentOrigin = process.env.BARANGAY_PLATFORM_URL;
-  if (!parentOrigin || request.headers.get("origin") !== new URL(parentOrigin).origin) {
+  const gameCenterOrigin = new URL(resolveBaseUrl(request)).origin;
+  if (request.headers.get("origin") !== gameCenterOrigin) {
     return NextResponse.json({ message: "Invalid sign-out origin." }, { status: 403 });
   }
-  const baseUrl = resolveBaseUrl(request);
-  const response = NextResponse.redirect(new URL("/auth/required", baseUrl), 303);
+
+  const parentUrl = process.env.BARANGAY_PLATFORM_URL;
+  if (!parentUrl) {
+    return NextResponse.json({ message: "Barangay Platform URL is not configured." }, { status: 503 });
+  }
+  let parentBase: URL;
+  try {
+    parentBase = new URL(parentUrl);
+  } catch {
+    return NextResponse.json({ message: "Barangay Platform URL is invalid." }, { status: 503 });
+  }
+
+  const formData = await request.formData().catch(() => null);
+  const returnUrlValue = formData?.get("returnUrl");
+  const allowedPaths = new Set(["/dashboard", "/admin", "/superadmin"]);
+  let returnUrl = new URL("/dashboard", parentBase);
+  if (typeof returnUrlValue === "string") {
+    try {
+      const requestedUrl = new URL(returnUrlValue);
+      if (
+        requestedUrl.origin === parentBase.origin &&
+        allowedPaths.has(requestedUrl.pathname) &&
+        !requestedUrl.search &&
+        !requestedUrl.hash
+      ) {
+        returnUrl = requestedUrl;
+      }
+    } catch {
+      // Use the default parent dashboard for invalid return targets.
+    }
+  }
+
+  const response = NextResponse.redirect(returnUrl, 303);
   response.cookies.set(GAME_CENTER_SESSION_COOKIE, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

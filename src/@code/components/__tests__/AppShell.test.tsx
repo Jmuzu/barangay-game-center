@@ -6,14 +6,18 @@ jest.mock("../ProfileSidePanel", () => ({
 }));
 
 describe("AppShell", () => {
-  it("links back to the configured Barangay Platform dashboard", () => {
+  it("submits logout and returns to the configured Barangay Platform dashboard", () => {
     render(
       <AppShell returnUrl="http://localhost:3000/admin">
         <p>Game Center content</p>
       </AppShell>
     );
 
-    expect(screen.getByRole("link", { name: "Back to Barangay Platform" }))
-      .toHaveAttribute("href", "http://localhost:3000/admin");
+    const backButton = screen.getByRole("button", { name: "Back to Barangay Platform" });
+    expect(backButton).toHaveAttribute("type", "submit");
+    expect(backButton.closest("form")).toHaveAttribute("action", "/api/auth/logout");
+    expect(backButton.closest("form")).toHaveAttribute("method", "post");
+    expect(screen.getByDisplayValue("http://localhost:3000/admin"))
+      .toHaveAttribute("name", "returnUrl");
   });
 });

@@ -38,10 +38,6 @@ export function ProfileSidePanel() {
         </Link>
       </div>
 
-      <form action="/api/auth/logout" method="post">
-        <Button type="submit" variant="secondary" className="w-full">Sign out of Game Center</Button>
-      </form>
-
       <div className="rounded-2xl border border-[var(--line)] bg-white p-2 shadow-sm">
         <p className="px-3 pb-2 pt-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Workspace</p>
         <SideNav />
