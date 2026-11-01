@@ -32,6 +32,8 @@ launch link to resolve.
 - `npm run test:watch` – run tests in watch mode.
 - `npm run lint` – lint the project.
 
+Use Node.js 20.9 or newer. The native SQLite dependency is pinned to a release compatible with Node.js 20; reinstall dependencies with `npm install` after switching Node.js versions.
+
 ## Barangay Platform SSO
 
 Game Center is a child app: direct page access and first-party APIs require a valid Barangay Platform session. Configure the same random secret of at least 32 bytes as `GAME_CENTER_SSO_SECRET` in ignored `.env.local` files in both apps. Also set `GAME_CENTER_URL=http://localhost:3100` in Barangay Platform and `BARANGAY_PLATFORM_URL=http://localhost:3000` here. Example variable names are in `.env.example` in each app.
