@@ -38,6 +38,12 @@ Game Center is a child app: direct page access and first-party APIs require a va
 
 The parent server issues a single-use 60-second signed launch token and posts it to Game Center; the token is not placed in the URL. The Next server exchanges the token with the Nest API, which verifies the signature, revalidates the parent session, consumes the one-use launch, and provisions a zero-balance player keyed by the parent user ID. The Next server sets the returned child token in an HttpOnly cookie and forwards it as a Bearer token only in server-to-server API requests. Residents map to Game Center Player; parent Admin and SuperAdmin both map to Game Center SuperAdmin. Set `GAME_CENTER_API_URL` to the Nest API address (default local development: `http://localhost:3200`).
 
+## Render Environment
+
+For SSO troubleshooting, search the Game Center web and API Render logs for `game_center_sso`. The entry route forwards a generated `traceId` to the API so events can be matched across services. Logs report stage, outcome, and safe status/reason fields only; never log or share SSO tokens, session tokens, secrets, or user identifiers.
+
+Render runs the Next.js app and NestJS API as separate services. Use `render.env.example` in this project for the Game Center web service and `codes/nestjs/barangay-game-center-api/render.env.example` for the API service. Replace the API URL placeholder in the web service after deploying the API, and set the same newly generated 32+ byte `GAME_CENTER_SSO_SECRET` in Barangay Platform, Game Center web, and the Game Center API. Keep `GAME_CENTER_SECRET_KEY` unique to the API and stable across deploys. Configure the MySQL connection string and PayMongo sandbox credentials only on the API service; Render provides its `PORT`.
+
 ## Data and Persistence
 
 - The UI calls same-origin Next route adapters; those adapters forward requests to the Nest API and attach the HttpOnly child-session token as Bearer auth server-side.
