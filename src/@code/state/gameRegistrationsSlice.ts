@@ -31,6 +31,20 @@ const gameRegistrationsSlice = createSlice({
       state.status = "ready";
       state.error = null;
     },
+    registrationUpdated(state, action: PayloadAction<GameRegistration>) {
+      state.items = state.items.map((item) =>
+        item.appKey === action.payload.appKey ? action.payload : item,
+      );
+      state.status = "ready";
+      state.error = null;
+    },
+    registrationDeleted(state, action: PayloadAction<string>) {
+      state.items = state.items.filter(
+        (item) => item.appKey !== action.payload,
+      );
+      state.status = "ready";
+      state.error = null;
+    },
     registrationsLoadFailed(state, action: PayloadAction<string>) {
       state.status = "error";
       state.error = action.payload;
@@ -42,6 +56,8 @@ export const {
   registrationsLoading,
   registrationsLoaded,
   registrationCreated,
+  registrationUpdated,
+  registrationDeleted,
   registrationsLoadFailed,
 } = gameRegistrationsSlice.actions;
 export const gameRegistrationsReducer = gameRegistrationsSlice.reducer;

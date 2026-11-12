@@ -8,6 +8,8 @@ import type { GameRegistration, GameRegistrationInput } from "@shared/types";
 import { RequireRole } from "@code/guards";
 import {
   registrationCreated,
+  registrationDeleted,
+  registrationUpdated,
   registrationsLoaded,
   registrationsLoadFailed,
   registrationsLoading,
@@ -75,7 +77,7 @@ const integrationFields: Array<{ key: keyof GameRegistrationInput; label: string
   { key: "balanceEndpoint", label: "Balance endpoint", placeholder: "/balance" },
   { key: "addChipsEndpoint", label: "Add transaction endpoint", placeholder: "/add-chips" },
   { key: "deductChipsEndpoint", label: "Deduct transaction endpoint", placeholder: "/deduct-chips" },
-  { key: "credentialReference", label: "Credential reference", placeholder: "secret-manager/inbetween-live" },
+  { key: "credentialReference", label: "Provider signing secret reference", placeholder: "secret-manager/inbetween-live" },
   { key: "signatureAlgorithm", label: "Signature algorithm", placeholder: "HMAC-SHA256" },
 ];
 
@@ -106,6 +108,9 @@ export function GameRegistrationPage() {
   const [credentials, setCredentials] = useState<{ appKey: string; signingSecret: string } | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
   const [revealingAppKey, setRevealingAppKey] = useState<string | null>(null);
+  const [editingAppKey, setEditingAppKey] = useState<string | null>(null);
+  const [deletingAppKey, setDeletingAppKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(registrationsLoading());
@@ -128,7 +133,7 @@ export function GameRegistrationPage() {
     REQUIRED_FIELDS.forEach((field) => {
       if (typeof form[field] === "string" && !form[field].trim()) errors[field] = "Required";
     });
-    if (!Number.isFinite(form.costPerPlay) || form.costPerPlay < 0) errors.costPerPlay = "Enter a valid non-negative cost";
+    if (!Number.isSafeInteger(form.costPerPlay) || form.costPerPlay < 0) errors.costPerPlay = "Enter a valid non-negative whole-number cost";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -142,9 +147,14 @@ export function GameRegistrationPage() {
 
     setIsSubmitting(true);
     setFormError(null);
+    setNotice(null);
     try {
-      const response = await fetch("/api/game-registrations", {
-        method: "POST",
+      const response = await fetch(
+        editingAppKey
+          ? `/api/game-registrations/${encodeURIComponent(editingAppKey)}`
+          : "/api/game-registrations",
+        {
+        method: editingAppKey ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
@@ -153,14 +163,90 @@ export function GameRegistrationPage() {
         setFormError("message" in body && body.message ? body.message : "Could not register the app.");
         return;
       }
-      if (!body.registration || !body.credentials) throw new Error("Registration credentials were not returned.");
-      dispatch(registrationCreated(body.registration));
-      setCredentials(body.credentials);
+      if (!body.registration) throw new Error("Registration was not returned.");
+      if (editingAppKey) {
+        dispatch(registrationUpdated(body.registration));
+        setNotice("Registration updated. The App Key and Secret are unchanged.");
+      } else {
+        if (!body.credentials) throw new Error("Registration credentials were not returned.");
+        dispatch(registrationCreated(body.registration));
+        setCredentials(body.credentials);
+        setNotice("Registration created. Save the generated credentials.");
+      }
+      setEditingAppKey(null);
       setForm(initialForm);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "The registration service is unavailable. Try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function editRegistration(registration: GameRegistration) {
+    setEditingAppKey(registration.appKey);
+    setForm({
+      appName: registration.appName,
+      providerName: registration.providerName,
+      description: registration.description,
+      category: registration.category,
+      costPerPlay: registration.costPerPlay,
+      launchType: registration.launchType,
+      status: registration.status,
+      active: registration.active,
+      launchUrl: registration.launchUrl,
+      apiBaseUrl: registration.apiBaseUrl,
+      authEndpoint: registration.authEndpoint,
+      balanceEndpoint: registration.balanceEndpoint,
+      addChipsEndpoint: registration.addChipsEndpoint,
+      deductChipsEndpoint: registration.deductChipsEndpoint,
+      credentialReference: registration.credentialReference,
+      signatureAlgorithm: registration.signatureAlgorithm,
+      externalUserIdField: registration.externalUserIdField,
+      transactionIdField: registration.transactionIdField,
+      transactionTypeField: registration.transactionTypeField,
+      gameTypeField: registration.gameTypeField,
+      requestIdField: registration.requestIdField,
+    });
+    setFieldErrors({});
+    setFormError(null);
+    setNotice(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingAppKey(null);
+    setForm(initialForm);
+    setFieldErrors({});
+    setFormError(null);
+    setNotice(null);
+  }
+
+  async function deleteRegistration(registration: GameRegistration) {
+    const confirmed = window.confirm(
+      `Delete ${registration.appName}? It will no longer appear in Game Center, and its App Key will stop working. Provider transaction history will be kept.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingAppKey(registration.appKey);
+    setFormError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(
+        `/api/game-registrations/${encodeURIComponent(registration.appKey)}`,
+        { method: "DELETE" },
+      );
+      const body = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        throw new Error(body.message || "Could not delete the registration.");
+      }
+      dispatch(registrationDeleted(registration.appKey));
+      if (editingAppKey === registration.appKey) cancelEdit();
+      if (credentials?.appKey === registration.appKey) setCredentials(null);
+      setNotice(body.message || "Registration deleted. Provider transaction history was retained.");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Could not delete the registration.");
+    } finally {
+      setDeletingAppKey(null);
     }
   }
 
@@ -183,9 +269,11 @@ export function GameRegistrationPage() {
       <section className="flex flex-col gap-6">
         <header>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--gold)]">SuperAdmin integration</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-[var(--navy)]">Register a game app</h2>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-[var(--navy)]">{editingAppKey ? "Edit game app registration" : "Register a game app"}</h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--muted)]">
-            Register an external game once, record its launch and API contract, and identify every transaction field the Game Center must preserve.
+            {editingAppKey
+              ? "Update the app details and provider contract. The App Key and Secret will stay the same."
+              : "Register an external game once, record its launch and API contract, and identify every transaction field the Game Center must preserve."}
           </p>
           <button type="button" onClick={() => setShowInstructions(true)} className="mt-3 rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--mint)]">Registration instructions</button>
         </header>
@@ -194,7 +282,7 @@ export function GameRegistrationPage() {
           <form className="flex flex-col gap-6" onSubmit={handleSubmit} noValidate>
             <div>
               <h3 className="font-semibold text-[var(--navy)]">Application details</h3>
-              <p className="mt-1 text-sm text-[var(--muted)]">App key and secret are generated automatically with SHA-256 after registration. The credential reference identifies the provider-side secret record.</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{editingAppKey ? "The generated App Key and Secret are not changed when editing. Enter a reference to the provider-side signing secret, not the secret value." : "The app key and signing secret are generated automatically after registration. Enter a reference to the provider-side signing secret, not the secret value."}</p>
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {applicationFields.map((field) => (
@@ -295,9 +383,11 @@ export function GameRegistrationPage() {
             </div>
 
             {formError ? <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-[var(--coral)]">{formError}</p> : null}
+            {notice ? <p role="status" className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}
             <div className="flex justify-end">
+              {editingAppKey ? <button type="button" onClick={cancelEdit} disabled={isSubmitting} className="mr-3 rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--mint)] disabled:opacity-60">Cancel</button> : null}
               <button type="submit" disabled={isSubmitting} className="rounded-xl bg-[var(--navy)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">
-                {isSubmitting ? "Registering..." : "Register app"}
+                {isSubmitting ? (editingAppKey ? "Saving..." : "Registering...") : (editingAppKey ? "Save changes" : "Register app")}
               </button>
             </div>
           </form>
@@ -318,15 +408,19 @@ export function GameRegistrationPage() {
                   <p className="font-semibold text-[var(--navy)]">{registration.appName}</p>
                   <p className="text-sm text-[var(--muted)]">{registration.providerName} · Generated App Key</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Registered</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${registration.active && registration.status === GameStatus.Active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>{registration.active && registration.status === GameStatus.Active ? "Active" : "Inactive"}</span>
                   <button type="button" onClick={() => revealCredentials(registration.appKey)} disabled={revealingAppKey === registration.appKey} className="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--navy)] hover:bg-[var(--mint)] disabled:opacity-60">
                     {revealingAppKey === registration.appKey ? "Loading..." : "View credentials"}
+                  </button>
+                  <button type="button" onClick={() => editRegistration(registration)} className="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--navy)] hover:bg-[var(--mint)]">Edit</button>
+                  <button type="button" onClick={() => deleteRegistration(registration)} disabled={deletingAppKey === registration.appKey} className="rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60">
+                    {deletingAppKey === registration.appKey ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </div>
               <p className="text-sm text-[var(--muted)]">Transactions: {registration.transactionIdField}, {registration.transactionTypeField}, {registration.gameTypeField}, {registration.requestIdField}</p>
-              <p className="text-xs text-[var(--muted)]">API: {registration.apiBaseUrl} · Credential: {registration.credentialReference}</p>
+              <p className="text-xs text-[var(--muted)]">API: {registration.apiBaseUrl} · Provider signing secret reference: {registration.credentialReference}</p>
             </Card>
           ))}
         </section>

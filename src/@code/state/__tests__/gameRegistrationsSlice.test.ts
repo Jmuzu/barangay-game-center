@@ -3,6 +3,8 @@ import type { GameRegistration } from "@shared/types";
 import {
   gameRegistrationsReducer,
   registrationCreated,
+  registrationDeleted,
+  registrationUpdated,
   registrationsLoaded,
   registrationsLoading,
 } from "@code/state/gameRegistrationsSlice";
@@ -49,6 +51,26 @@ describe("gameRegistrationsReducer", () => {
     const next = gameRegistrationsReducer(undefined, registrationCreated(registration));
     expect(next.items).toEqual([registration]);
     expect(next.error).toBeNull();
+  });
+
+  it("replaces the edited registration without changing its position", () => {
+    const updated = { ...registration, appName: "InBetween Live Updated" };
+    const state = gameRegistrationsReducer(
+      { ...gameRegistrationsReducer(undefined, registrationCreated(registration)), items: [registration] },
+      registrationUpdated(updated),
+    );
+
+    expect(state.items).toEqual([updated]);
+  });
+
+  it("removes a deleted registration from the cache", () => {
+    const state = gameRegistrationsReducer(
+      { ...gameRegistrationsReducer(undefined, registrationCreated(registration)), items: [registration] },
+      registrationDeleted(registration.appKey),
+    );
+
+    expect(state.items).toEqual([]);
+    expect(state.status).toBe("ready");
   });
 
   it("publishes active registered apps in the home catalog", () => {
