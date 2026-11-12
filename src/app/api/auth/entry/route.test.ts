@@ -46,6 +46,7 @@ describe("Game Center launch API exchange", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
     if (oldSecret === undefined) delete process.env.GAME_CENTER_SSO_SECRET;
     else process.env.GAME_CENTER_SSO_SECRET = oldSecret;
     if (oldApiUrl === undefined) delete process.env.GAME_CENTER_API_URL;
@@ -53,7 +54,9 @@ describe("Game Center launch API exchange", () => {
   });
 
   it("exchanges the launch token with Nest and sets an HttpOnly cookie", async () => {
-    const response = await POST(request(launchToken()));
+    const infoSpy = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    const token = launchToken();
+    const response = await POST(request(token));
 
     expect(response.status).toBe(303);
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
@@ -63,6 +66,10 @@ describe("Game Center launch API exchange", () => {
     expect(String(url)).toBe("http://api.test/api/auth/launch/exchange");
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("origin")).toBe(parentOrigin);
+    expect(new Headers(init.headers).get("x-game-center-trace-id")).toMatch(
+      /^[a-f\d-]{36}$/i,
+    );
+    expect(infoSpy.mock.calls.flat().join(" ")).not.toContain(token);
   });
 
   it("maps API replay rejection to the existing replay screen", async () => {
