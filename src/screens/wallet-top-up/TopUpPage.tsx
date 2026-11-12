@@ -18,6 +18,8 @@ export function TopUpPage() {
   const [error, setError] = useState<string | null>(null);
   const [purchaseState, setPurchaseState] = useState<CoinPurchaseStatusResponse | null>(null);
   const [returnResult, setReturnResult] = useState<string | null>(null);
+  const [customAmount, setCustomAmount] = useState("");
+  const [customAmountError, setCustomAmountError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/payments/checkout")
@@ -64,14 +66,14 @@ export function TopUpPage() {
     };
   }, []);
 
-  async function startCheckout(packageId: string) {
+  async function startCheckout(input: { packageId: string } | { amountPesos: number }) {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/payments/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
+        body: JSON.stringify(input),
       });
       const body = (await response.json()) as { checkoutUrl?: string; message?: string };
       if (!response.ok || !body.checkoutUrl) {
@@ -87,6 +89,10 @@ export function TopUpPage() {
   }
 
   const sandboxEnabled = configuration?.enabled === true;
+  const checkoutDisabled = !sandboxEnabled || isLoading || purchaseState?.status === "pending";
+  const customAmountPesos = Number(customAmount);
+  const customAmountValid = customAmount.trim() !== "" &&
+    Number.isSafeInteger(customAmountPesos) && customAmountPesos >= 1 && customAmountPesos <= 100000;
 
   return (
     <section className="flex flex-col gap-6">
@@ -116,6 +122,51 @@ export function TopUpPage() {
         <Card><p className="text-sm text-[var(--muted)]">PayMongo test keys and a test webhook secret are required to enable checkout.</p></Card>
       ) : null}
 
+      <Card>
+        <form
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!customAmountValid) {
+              setCustomAmountError("Enter a whole-peso amount from PHP 1 to PHP 100,000.");
+              return;
+            }
+            if (checkoutDisabled) return;
+            setCustomAmountError(null);
+            void startCheckout({ amountPesos: customAmountPesos });
+          }}
+        >
+          <div>
+            <h2 className="font-semibold text-[var(--navy)]">Custom amount</h2>
+            <p id="custom-amount-help" className="mt-1 text-sm text-[var(--muted)]">Enter PHP 1 to PHP 100,000 in whole pesos. PHP 1 = 1 demo coin.</p>
+          </div>
+          <label htmlFor="custom-amount" className="text-sm font-semibold text-[var(--ink)]">Amount (PHP)</label>
+          <input
+            id="custom-amount"
+            type="number"
+            min="1"
+            max="100000"
+            step="1"
+            inputMode="numeric"
+            value={customAmount}
+            disabled={checkoutDisabled}
+            aria-invalid={Boolean(customAmountError)}
+            aria-describedby={`custom-amount-help${customAmountError ? " custom-amount-error" : ""}`}
+            onChange={(event) => {
+              setCustomAmount(event.target.value);
+              setCustomAmountError(null);
+            }}
+            className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm text-[var(--ink)] focus:outline-none focus:ring-2 focus:ring-[var(--navy)] disabled:opacity-50"
+          />
+          {customAmountValid ? <p className="text-sm text-[var(--ink)]">You will receive {customAmountPesos.toLocaleString("en-PH")} demo coins.</p> : null}
+          {customAmountError ? <p id="custom-amount-error" role="alert" className="text-sm text-[var(--coral)]">{customAmountError}</p> : null}
+          <button type="submit" disabled={checkoutDisabled} className="rounded-lg bg-[var(--navy)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+            {isLoading ? "Opening checkout..." : "Continue with custom amount"}
+          </button>
+        </form>
+      </Card>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {TEST_COIN_PACKAGES.map((coinPackage) => (
           <Card key={coinPackage.id} className="flex flex-col gap-4">
@@ -127,7 +178,7 @@ export function TopUpPage() {
             <button
               type="button"
               disabled={!sandboxEnabled || isLoading || Boolean(purchaseState?.status === "pending")}
-              onClick={() => void startCheckout(coinPackage.id)}
+              onClick={() => void startCheckout({ packageId: coinPackage.id })}
               className="rounded-lg bg-[var(--navy)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Opening checkout..." : "Continue to test checkout"}

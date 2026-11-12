@@ -73,7 +73,9 @@ Register a PayMongo **test-mode** webhook at `https://your-public-test-tunnel.ex
 
 While a purchase is pending, the status endpoint also checks its stored Checkout Session against PayMongo test mode. This recovers paid sessions if webhook delivery was missed; the browser return itself never grants coins.
 
-The API validates package IDs and amounts server-side and grants exactly 1 coin per ₱1. The sandbox integration is not a production payment system and has no live-key support, real-money balance isolation, refunds, withdrawals, or cash-out.
+The API validates package IDs and amounts server-side and grants exactly 1 coin per ₱1. Buy Coins also accepts custom amounts from PHP 1 to PHP 100,000 in whole pesos and previews the coin grant. Custom checkout sends `{ "amountPesos": 500 }`; preset checkout still sends a known `packageId`. The API rejects mixed selections, extra price/coin fields, fractions, and out-of-range values, and stores custom purchases as `sandbox-custom`. Fulfillment checks the stored payment amount before adding coins. No schema migration is required.
+
+The sandbox integration is not a production payment system and has no live-key support, real-money balance isolation, refunds, withdrawals, or cash-out.
 
 ## Architecture
 
